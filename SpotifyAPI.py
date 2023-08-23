@@ -36,7 +36,7 @@ def get_auth_header(token):
 # Search for a playlist by link
 def search_for_playlist_by_link(token, playlist_link):
     playlist_id = re.search(r"playlist\/([a-zA-Z0-9]+)", playlist_link).group(1)
-    playlist_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+    playlist_url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
 
     all_tracks = []
     offset = 0
@@ -51,24 +51,33 @@ def search_for_playlist_by_link(token, playlist_link):
         result = get(playlist_url, headers=headers, params=params)
         json_result = json.loads(result.content)
 
-        if 'items' in json_result:
-            all_tracks.extend(json_result['items'])
+        if 'tracks' and 'name' in json_result:
+            all_tracks.extend(json_result['tracks']['items'])
+            playlist_name=json_result['name']
             offset += limit
-            if offset >= json_result['total']:
+            if offset >= json_result['tracks']['total']:
                 break
         else:
             print("Error: No 'items' in the API response.")
             break
 
-    return all_tracks
+    return playlist_name, all_tracks
 
 token = get_token()
 playlist_link = input("Paste The Spotify Playlist Link Here:")
 download_directory = input("Where Do You Wanna Download This? ex: C:/Users/... :")
-all_tracks_data = search_for_playlist_by_link(token, playlist_link)
+playlist_name,all_tracks_data = search_for_playlist_by_link(token, playlist_link)
+# Create download directory if it doesn't exist
+if not os.path.exists(download_directory):
+    os.makedirs(download_directory)
+# Create folder with playlist name
+playlist_folder_path = os.path.join(download_directory, playlist_name)
+if not os.path.exists(playlist_folder_path):
+    os.makedirs(playlist_folder_path)
 
 if all_tracks_data:
-    print(f"Playlist '{playlist_link}' has {len(all_tracks_data)} tracks:")
+    print(f"Playlist '{playlist_name}' has {len(all_tracks_data)} tracks:")
+    
     for idx, track_info in enumerate(all_tracks_data):
         try:
             if track_info is not None and 'track' in track_info and 'name' in track_info['track']:
@@ -78,11 +87,8 @@ if all_tracks_data:
                 print(f"{idx + 1}. {track_name} - {artist_name}")
 
                 # Perform a YouTube search to get video results
-                search_query = f"{track_name}-{artist_name} Full Audio-Version"
+                search_query = f"{track_name}-{artist_name} Full Audio-Version / Lyrics"
                 search_result = YoutubeSearch(search_query, max_results=1).to_dict()
-                # Create download directory if it doesn't exist
-                if not os.path.exists(download_directory):
-                    os.makedirs(download_directory)
 
                 max_video_length_seconds = 450  #7 Minutes    
                 video_id = search_result[0]['id']
@@ -105,7 +111,7 @@ if all_tracks_data:
                     print(f"{track_name}-{artist_name}'s Video Length is longer than 7 Minutes")
                 else:
                         # Full path for the MP3 file
-                    mp3_filename = os.path.join(download_directory, f"{track_name}.mp3")
+                    mp3_filename = os.path.join(playlist_folder_path, f"{track_name}.mp3")
 
                         # Check if the MP3 file already exists
                     if not os.path.exists(mp3_filename):
@@ -117,7 +123,7 @@ if all_tracks_data:
                                     'preferredcodec': 'mp3',
                                     'preferredquality': '192',
                                 }],
-                                'outtmpl': os.path.join(download_directory, f"{track_name}"),
+                                'outtmpl': os.path.join(playlist_folder_path, f"{track_name}"),
                                 'postprocessor_args': [
                                 '-metadata', f'artist={artist_name}',
                                 '-metadata', f'title={track_name}',
